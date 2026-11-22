@@ -10,7 +10,7 @@ jobs:
     name: Build & test (Kotlin)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -29,7 +29,7 @@ jobs:
     name: Investigation queries (DuckDB)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -42,7 +42,7 @@ jobs:
     name: Validate Prometheus rules
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           docker run --rm --entrypoint promtool -v "$PWD/infra/prometheus:/p" prom/prometheus:v2.55.1 \
             check rules /p/rules/slo-safety-events.yml /p/rules/fleet-health.yml
