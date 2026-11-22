@@ -1,0 +1,49 @@
+# SLO: 99% of safety events visible in the panel within 30s of happening, over 28 days.
+# Error budget = 1%. Alerts use multi-window burn rates (Google SRE Workbook, ch. 5):
+#   page   when burning 14.4x budget (2% of the 28d budget in 1h)
+#   ticket when burning 3x budget    (sustained over 6h)
+groups:
+  - name: slo-safety-events-recording
+    rules:
+      - record: fleetcam:safety_e2e_latency:error_ratio_rate5m
+        expr: |
+          1 - (
+            sum(rate(fleetcam_safety_e2e_latency_seconds_bucket{le="30.0"}[5m]))
+            /
+            sum(rate(fleetcam_safety_e2e_latency_seconds_count[5m]))
+          )
+      - record: fleetcam:safety_e2e_latency:error_ratio_rate30m
+        expr: |
+          1 - (sum(rate(fleetcam_safety_e2e_latency_seconds_bucket{le="30.0"}[30m])) / sum(rate(fleetcam_safety_e2e_latency_seconds_count[30m])))
+      - record: fleetcam:safety_e2e_latency:error_ratio_rate1h
+        expr: |
+          1 - (sum(rate(fleetcam_safety_e2e_latency_seconds_bucket{le="30.0"}[1h])) / sum(rate(fleetcam_safety_e2e_latency_seconds_count[1h])))
+      - record: fleetcam:safety_e2e_latency:error_ratio_rate6h
+        expr: |
+          1 - (sum(rate(fleetcam_safety_e2e_latency_seconds_bucket{le="30.0"}[6h])) / sum(rate(fleetcam_safety_e2e_latency_seconds_count[6h])))
+
+  - name: slo-safety-events-alerts
+    rules:
+      - alert: SafetyEventLatencyBudgetBurnFast
+        expr: |
+          fleetcam:safety_e2e_latency:error_ratio_rate1h > (14.4 * 0.01)
+          and
+          fleetcam:safety_e2e_latency:error_ratio_rate5m > (14.4 * 0.01)
+        labels:
+          severity: page
+          team: iot-video
+        annotations:
+          summary: "Eventos de segurança chegando atrasados ao painel (queima rápida de error budget)"
+          runbook: "docs/runbooks/safety-event-latency.md"
+
+      - alert: SafetyEventLatencyBudgetBurnSlow
+        expr: |
+          fleetcam:safety_e2e_latency:error_ratio_rate6h > (3 * 0.01)
+          and
+          fleetcam:safety_e2e_latency:error_ratio_rate30m > (3 * 0.01)
+        labels:
+          severity: ticket
+          team: iot-video
+        annotations:
+          summary: "Latência de eventos de segurança acima do SLO de forma sustentada"
+          runbook: "docs/runbooks/safety-event-latency.md"

@@ -1,0 +1,44 @@
+groups:
+  - name: fleet-health
+    rules:
+      - alert: SafetyEventsDeadLettered
+        expr: sum(increase(fleetcam_safety_events_total{outcome="dead_lettered"}[10m])) > 5
+        labels: { severity: ticket, team: iot-video }
+        annotations:
+          summary: "Eventos de segurança indo para a DLT ({{ $value | humanize }} em 10 min)"
+          runbook: "docs/runbooks/dlt-growing.md"
+
+      - alert: FleetOfflineRatioHigh
+        expr: |
+          sum(fleetcam_devices{state="OFFLINE"}) / clamp_min(sum(fleetcam_devices), 1) > 0.10
+        for: 10m
+        labels: { severity: page, team: iot-video }
+        annotations:
+          summary: "Mais de 10% da frota offline — suspeitar de problema sistêmico (backend, operadora, firmware)"
+          runbook: "docs/runbooks/devices-offline.md"
+
+      - alert: SdCardReadOnlySpike
+        expr: sum(increase(fleetcam_device_issues_opened_total{type="SD_CARD_READ_ONLY"}[1h])) > 10
+        labels: { severity: ticket, team: iot-video }
+        annotations:
+          summary: "Pico de cartões SD em somente leitura (possível lote defeituoso ou bug de firmware)"
+          runbook: "docs/runbooks/sd-card.md"
+
+      - alert: DeviceClockSkewByFirmware
+        expr: |
+          histogram_quantile(0.5,
+            sum by (le, firmware) (rate(fleetcam_ingestion_clock_offset_seconds_bucket[15m]))
+          ) > 300
+        for: 15m
+        labels: { severity: ticket, team: iot-video }
+        annotations:
+          summary: "Firmware {{ $labels.firmware }}: relógio mediano desviado > 5 min"
+          runbook: "docs/runbooks/clock-skew.md"
+
+      - alert: HeartbeatConsumerLagHigh
+        expr: max by (job) (kafka_consumer_fetch_manager_records_lag_max) > 10000
+        for: 10m
+        labels: { severity: ticket, team: iot-video }
+        annotations:
+          summary: "{{ $labels.job }} com lag alto no Kafka — estados de saúde ficando defasados"
+          runbook: "docs/runbooks/devices-offline.md"
