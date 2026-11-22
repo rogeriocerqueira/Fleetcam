@@ -1,0 +1,64 @@
+type Query {
+    device(id: ID!): Device
+    devices(state: DeviceState, issue: IssueType, first: Int = 50): [Device!]!
+    fleetHealthSummary: FleetHealthSummary!
+}
+
+enum DeviceState { ACTIVE DEGRADED OFFLINE }
+
+enum IssueType {
+    SD_CARD_READ_ONLY
+    SD_CARD_WRITE_ERRORS
+    SD_CARD_LOW_SPACE
+    REBOOT_LOOP
+    CLOCK_SKEW
+    OFFLINE
+}
+
+type Device {
+    id: ID!
+    firmwareVersion: String!
+    state: DeviceState!
+    "ISO-8601, server clock"
+    lastSeenAt: String!
+    sdCard: SdCard!
+    connectivity: Connectivity!
+    openIssues: [HealthIssue!]!
+    transitions(last: Int = 10): [StateTransition!]!
+}
+
+type SdCard {
+    totalGb: Float!
+    freePercent: Float!
+    readOnly: Boolean!
+    writeErrorsSinceBoot: Int!
+}
+
+type Connectivity {
+    network: String!
+    signalDbm: Int!
+}
+
+type HealthIssue {
+    type: IssueType!
+    severity: String!
+    "Plain-language explanation written for Support/CS"
+    detail: String!
+    openedAt: String!
+}
+
+type StateTransition {
+    from: DeviceState
+    to: DeviceState!
+    reason: String!
+    at: String!
+}
+
+type FleetHealthSummary {
+    totalDevices: Int!
+    byState: [StateCount!]!
+    openIssues: [IssueCount!]!
+}
+
+type StateCount { state: DeviceState!, count: Int! }
+type IssueCount { type: IssueType!, count: Int! }
