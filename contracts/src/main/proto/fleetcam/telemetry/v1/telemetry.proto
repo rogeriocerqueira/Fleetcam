@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package fleetcam.telemetry.v1;
+
+option java_multiple_files = true;
+option java_package = "dev.fleetcam.contracts.telemetry.v1";
+
+import "google/protobuf/timestamp.proto";
+
+// Gateway that dashcams in the field use to push telemetry.
+//
+// Delivery is at-least-once: the device keeps every message in a local buffer
+// until the server acknowledges the batch. A lost ack means the batch is resent,
+// so consumers MUST be idempotent on message_id.
+service DeviceGateway {
+  rpc Publish(TelemetryBatch) returns (PublishResponse);
+}
+
+message TelemetryBatch {
+  string device_id = 1;
+  string firmware_version = 2;
+  // Device clock at the moment the batch left the device. Together with the
+  // server receive time this lets the backend estimate clock skew independently
+  // of how long messages stayed buffered on the device.
+  google.protobuf.Timestamp device_sent_at = 3;
+  repeated TelemetryEnvelope items = 4;
+}
+
+message TelemetryEnvelope {
+  // UUID generated on the device. Idempotency key across the whole pipeline.
+  string message_id = 1;
+  // Device clock at the moment the message was produced.
+  google.protobuf.Timestamp device_time = 2;
+
+  oneof payload {
+    Heartbeat heartbeat = 10;
+    SafetyEvent safety_event = 11;
+  }
+}
+
+message Heartbeat {
+  int64 uptime_seconds = 1;
+  SdCardStatus sd_card = 2;
+  Connectivity connectivity = 3;
+  // Video clips recorded but not yet uploaded.
+  int32 pending_uploads = 4;
+}
+
+message SdCardStatus {
+  int64 total_bytes = 1;
+  int64 free_bytes = 2;
+  int32 write_errors_since_boot = 3;
+  // Firmware flips the card to read-only after unrecoverable write errors.
+  // In this state the camera is NOT recording.
+  bool read_only = 4;
+}
+
+message Connectivity {
+  NetworkType network = 1;
+  int32 signal_dbm = 2;
+}
+
+enum NetworkType {
+  NETWORK_TYPE_UNSPECIFIED = 0;
+  NETWORK_TYPE_LTE = 1;
+  NETWORK_TYPE_3G = 2;
+  NETWORK_TYPE_WIFI = 3;
+}
+
+// Event produced by the on-device computer vision model.
+message SafetyEvent {
+  SafetyEventType type = 1;
+  float confidence = 2;
+  double latitude = 3;
+  double longitude = 4;
+  float speed_kmh = 5;
+  // Identifier of the video clip stored on the SD card for this event.
+  string clip_id = 6;
+}
+
+enum SafetyEventType {
+  SAFETY_EVENT_TYPE_UNSPECIFIED = 0;
+  SAFETY_EVENT_TYPE_DROWSINESS = 1;
+  SAFETY_EVENT_TYPE_PHONE_USAGE = 2;
+  SAFETY_EVENT_TYPE_HARSH_BRAKING = 3;
+  SAFETY_EVENT_TYPE_FORWARD_COLLISION_WARNING = 4;
+  SAFETY_EVENT_TYPE_SMOKING = 5;
+}
+
+message PublishResponse {
+  int32 accepted = 1;
+  int32 rejected = 2;
+  // Rejected messages are permanently invalid: the device must drop them, not retry.
+  repeated string rejected_message_ids = 3;
+}
