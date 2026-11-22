@@ -1,0 +1,16 @@
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+*.log
+out/
+
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# analytics
+analytics/data/
+__pycache__/
+.venv/
