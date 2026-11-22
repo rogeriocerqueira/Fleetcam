@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build & test (Kotlin)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      # Unit tests + Testcontainers integration tests (Docker is available on GitHub runners)
+      - run: ./gradlew build --no-daemon
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: "**/build/reports/tests/"
+
+  analytics:
+    name: Investigation queries (DuckDB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r analytics/requirements.txt
+      # Regenerates the synthetic dataset and runs every investigation query, so the
+      # numbers quoted in the postmortem stay reproducible.
+      - run: python analytics/investigate.py --check
+
+  config:
+    name: Validate Prometheus rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          docker run --rm --entrypoint promtool -v "$PWD/infra/prometheus:/p" prom/prometheus:v2.55.1 \
+            check rules /p/rules/slo-safety-events.yml /p/rules/fleet-health.yml

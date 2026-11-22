@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      spring:
+        patterns: ["org.springframework*"]
+      grpc:
+        patterns: ["io.grpc*", "com.google.protobuf*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
