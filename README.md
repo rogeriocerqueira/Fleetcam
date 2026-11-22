@@ -19,6 +19,13 @@ alarmes que mentem.
 
 ## Arquitetura
 
+<p align="center">
+  <img src="docs/assets/architecture.svg" alt="Arquitetura do FleetCam: câmeras → gRPC → ingestion-service → Kafka → device-health e safety-processor → Postgres, DLT e painel GraphQL; métricas em Prometheus/Grafana" width="100%">
+</p>
+
+<details>
+<summary>Versão em Mermaid (texto, fácil de editar)</summary>
+
 ```mermaid
 flowchart LR
     SIM["device-simulator<br/>(câmeras + falhas)"] -- "gRPC / Protobuf<br/>TelemetryBatch" --> ING[ingestion-service]
@@ -32,6 +39,8 @@ flowchart LR
     HEALTH -- GraphQL --> UI[Painel / Suporte]
     ING & HEALTH & SAFETY -. métricas .-> PROM[Prometheus] --> GRAF[Grafana]
 ```
+
+</details>
 
 | Módulo | Responsabilidade |
 |---|---|
@@ -127,7 +136,3 @@ make investigate      # gera ~72 mil eventos sintéticos e roda as 7 queries do 
 - [ ] Sidecar de visão computacional (YOLO/MediaPipe) gerando eventos a partir de vídeos públicos de direção
 - [ ] Exportar métricas para Datadog via OpenTelemetry
 
-## Uso de IA
-
-Uso IA de forma estruturada (geração de código, revisão, rascunho de queries), sempre com verificação
-objetiva. Detalhes, incluindo onde ela errou, em [docs/ai-log.md](docs/ai-log.md).
