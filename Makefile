@@ -1,6 +1,6 @@
 FAULTS ?= sd_card_degrading:2,flaky_connectivity:4,firmware_clock_skew:8,reboot_loop:1,goes_dark:1,bad_gps:1
 
-.PHONY: help infra down build test run-ingestion run-health run-safety simulate up-all smoke demo investigate
+.PHONY: help infra down build test run-ingestion run-health run-safety simulate up-all smoke demo replay-dlt investigate
 
 help: ## Lista os comandos
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -37,6 +37,9 @@ smoke: ## Verifica o fluxo de ponta a ponta (serviços e simulador já rodando)
 
 demo: up-all ## Sobe tudo em containers e roda o smoke test
 	TIMEOUT=240 ./scripts/smoke.sh
+
+replay-dlt: ## Mostra a DLT (dry run). Para republicar: ./scripts/replay-dlt.sh --apply
+	./scripts/replay-dlt.sh
 
 investigate: ## Gera o dataset sintético e roda as queries do postmortem 001
 	pip install -q -r analytics/requirements.txt && python analytics/investigate.py

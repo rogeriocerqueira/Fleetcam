@@ -19,10 +19,13 @@ para inspeção e reprocessamento.
    | Transiente esgotado | timeout de banco após retries | Problema de infra. Corrija e **reprocesse** |
 
 ## Reprocessamento
-Depois de corrigir a causa, republique as mensagens da DLT no tópico original. O processamento é
-idempotente por `message_id`, então reprocessar duas vezes não duplica nada.
+Depois de corrigir a causa, republique as mensagens no tópico original. O processamento é idempotente
+por `message_id`, então reprocessar duas vezes não duplica nada.
 
 ```bash
-docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
-  --topic device.safety-events.v1.DLT --from-beginning --property print.key=true --timeout-ms 5000
+./scripts/replay-dlt.sh           # dry run: quantas mensagens, de quais devices, exemplo de payload
+./scripts/replay-dlt.sh --apply   # republica só o que ainda não foi reprocessado (consumer group dlt-replay)
 ```
+
+Eventos que continuam inválidos (ex.: GPS sem fix) voltam para a DLT. Reprocessar só faz sentido para
+causas transientes ou depois de corrigir o código.
