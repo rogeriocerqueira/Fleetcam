@@ -5,7 +5,6 @@ import dev.fleetcam.health.domain.HealthThresholds
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan
-import org.springframework.boot.context.properties.bind.ConstructorBinding
 import org.springframework.boot.runApplication
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -23,7 +22,7 @@ fun main(args: Array<String>) {
 }
 
 @ConfigurationProperties("fleetcam.health")
-data class HealthProperties @ConstructorBinding constructor(
+data class HealthProperties(
     val sdWriteErrorsWarn: Int = 10,
     val sdLowSpaceRatio: Double = 0.05,
     val rebootLoopCount: Int = 3,
