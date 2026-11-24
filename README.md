@@ -103,6 +103,16 @@ make simulate FAULTS=sd_card_degrading:3,firmware_clock_skew:10
 | `goes_dark` | para de enviar dados | `OFFLINE` após 5 min |
 | `bad_gps` | eventos com GPS (0,0) | DLT + alerta `SafetyEventsDeadLettered` |
 
+### Verificando de ponta a ponta
+
+```bash
+make demo             # sobe tudo em containers e confere o fluxo completo
+make smoke            # só a verificação, com os serviços já rodando localmente
+```
+
+O smoke test confere, em ordem: serviços saudáveis → gateway aceitando telemetria → devices registrados
+via GraphQL → eventos gravados → falhas injetadas detectadas → Prometheus coletando métricas.
+
 ### Investigação com SQL
 
 ```bash
@@ -128,10 +138,25 @@ make investigate      # gera ~72 mil eventos sintéticos e roda as 7 queries do 
 | [0003](docs/adr/0003-idempotency-and-dlt.md) | Idempotência por `message_id`; DLT para eventos, descarte para heartbeats |
 | [0004](docs/adr/0004-three-timestamps.md) | Três timestamps por mensagem; nunca misturar relógios |
 
+## Limitações conhecidas
+
+Escolhas conscientes para manter o escopo, e o que eu faria em produção:
+
+| Limitação | Em produção |
+|---|---|
+| gRPC sem TLS: qualquer cliente pode enviar dados em nome de qualquer `device_id` | mTLS com certificado por device; o `device_id` vem do certificado, não do payload |
+| GraphQL sem autenticação | OAuth2/JWT com escopo por cliente (um cliente só vê a própria frota) |
+| Capacidade não medida: o health service faz algumas queries e um lock por heartbeat | Teste de carga (`ghz`) para achar o limite; processamento em lote se for o gargalo |
+| Postmortem 001 usa dataset sintético | Postmortem 002 com dados exportados do próprio sistema rodando |
+| Vídeo representado só por `clipId` | Pipeline de upload de clipes (ver próximos passos) |
+| Kafka e Postgres com uma réplica | Replicação 3 / `min.insync.replicas=2`; Postgres com réplica |
+
 ## Próximos passos
 
-- [ ] Painel React consumindo a API GraphQL
 - [ ] Fluxo de upload de clipes de vídeo (S3/MinIO) com retomada de upload interrompido
+- [ ] Testes de integração do ingestion (gRPC) e do health service; teste de carga com números no README
+- [ ] Tracing com OpenTelemetry atravessando gRPC → Kafka → consumers
+- [ ] Painel React consumindo a API GraphQL
 - [ ] Rollout de firmware em canário com gate automático nas métricas de saúde
 - [ ] Sidecar de visão computacional (YOLO/MediaPipe) gerando eventos a partir de vídeos públicos de direção
 - [ ] Exportar métricas para Datadog via OpenTelemetry
