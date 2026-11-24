@@ -45,7 +45,7 @@ class DeviceGraphqlController(private val repo: DeviceRepository) {
         val byState = repo.countByState()
         return FleetHealthSummary(
             totalDevices = byState.values.sum(),
-            byState = DeviceState.entries.map { StateCount(it, byState[it] ?: 0) },
+            byState = DeviceState.entries.map { StateCount(it, byState[it] ?: 0L) },
             openIssues = repo.countOpenIssuesByType().map { (type, n) -> IssueCount(type, n) }.sortedByDescending { it.count },
         )
     }
