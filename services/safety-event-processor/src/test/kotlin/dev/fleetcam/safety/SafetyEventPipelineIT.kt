@@ -3,12 +3,16 @@ package dev.fleetcam.safety
 import dev.fleetcam.contracts.events.SafetyEventReceived
 import dev.fleetcam.contracts.events.Topics
 import io.micrometer.core.instrument.MeterRegistry
+import org.apache.kafka.clients.admin.NewTopic
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
+import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.kafka.config.TopicBuilder
 import org.springframework.kafka.core.KafkaTemplate
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
@@ -39,6 +43,16 @@ class SafetyEventPipelineIT {
         @ServiceConnection
         @JvmStatic
         val kafka = KafkaContainer("apache/kafka:3.8.0")
+    }
+
+    /**
+     * In production the ingestion-service owns (creates) the source topic. Here it doesn't run,
+     * so the test declares it; KafkaAdmin creates it before the listener containers start.
+     */
+    @TestConfiguration
+    class SourceTopic {
+        @Bean
+        fun safetyEventsTopic(): NewTopic = TopicBuilder.name(Topics.SAFETY_EVENTS).partitions(1).replicas(1).build()
     }
 
     @Autowired lateinit var kafkaTemplate: KafkaTemplate<String, Any>
