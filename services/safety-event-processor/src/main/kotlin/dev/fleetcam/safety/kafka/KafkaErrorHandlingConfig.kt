@@ -10,12 +10,12 @@ import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.kafka.common.serialization.Serializer
 import org.apache.kafka.common.serialization.StringSerializer
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.kafka.config.TopicBuilder
 import org.springframework.kafka.core.DefaultKafkaProducerFactory
 import org.springframework.kafka.core.KafkaTemplate
+import org.springframework.kafka.core.ProducerFactory
 import org.springframework.kafka.listener.ConsumerRecordRecoverer
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer
 import org.springframework.kafka.listener.DefaultErrorHandler
@@ -43,9 +43,12 @@ class KafkaErrorHandlingConfig(private val props: SafetyProperties) {
     /**
      * Dedicated template for the DLT: valid-but-rejected records are objects (JSON), while
      * records that failed deserialization arrive as raw bytes and must be forwarded untouched.
+     *
+     * Connection settings come from Boot's producer factory (not straight from KafkaProperties),
+     * so connection-details overrides such as Testcontainers' @ServiceConnection are honored.
      */
     @Bean
-    fun dltTemplate(kafkaProperties: KafkaProperties): KafkaTemplate<String, Any> {
+    fun dltTemplate(bootProducerFactory: ProducerFactory<*, *>): KafkaTemplate<String, Any> {
         val valueSerializer = DelegatingByTypeSerializer(
             mapOf<Class<*>, Serializer<*>>(
                 ByteArray::class.java to ByteArraySerializer(),
@@ -53,7 +56,7 @@ class KafkaErrorHandlingConfig(private val props: SafetyProperties) {
             ),
         )
         val factory = DefaultKafkaProducerFactory<String, Any>(
-            kafkaProperties.buildProducerProperties(null),
+            bootProducerFactory.configurationProperties.filterKeys { !it.startsWith("spring.json.") },
             StringSerializer(),
             valueSerializer,
         )
