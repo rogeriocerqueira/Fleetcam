@@ -7,7 +7,7 @@ Projeto de portfólio que reproduz, em escala pequena, os problemas do dia a dia
 cartões SD falhando, dispositivos em reboot loop, rede instável, duplicados, firmware com bug e
 alarmes que mentem.
 
-![Kotlin](https://img.shields.io/badge/Kotlin-1.9-7F52FF) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F) ![Kafka](https://img.shields.io/badge/Kafka-3.8-231F20) ![gRPC](https://img.shields.io/badge/gRPC-protobuf-244c5a)
+[![CI](https://github.com/rogeriocerqueira/Fleetcam/actions/workflows/ci.yml/badge.svg)](https://github.com/rogeriocerqueira/Fleetcam/actions/workflows/ci.yml) ![Kotlin](https://img.shields.io/badge/Kotlin-1.9-7F52FF) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-6DB33F) ![Kafka](https://img.shields.io/badge/Kafka-3.8-231F20) ![gRPC](https://img.shields.io/badge/gRPC-protobuf-244c5a)
 
 ## Destaques
 
