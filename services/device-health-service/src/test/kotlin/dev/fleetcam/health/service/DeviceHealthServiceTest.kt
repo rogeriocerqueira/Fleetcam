@@ -11,11 +11,10 @@ import dev.fleetcam.health.domain.StateTransition
 import dev.fleetcam.health.metrics.HealthMetrics
 import dev.fleetcam.health.persistence.DeviceRepository
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
-import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers.any
-import org.mockito.ArgumentMatchers.anyString
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.verify
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -28,7 +27,7 @@ class DeviceHealthServiceTest {
     private val receivedAt = Instant.parse("2026-11-24T10:00:00Z")
     private val processedAt = receivedAt.plus(Duration.ofMinutes(15)) // consumer 15 min behind
 
-    private val repo = mock(DeviceRepository::class.java)
+    private val repo = mock<DeviceRepository>()
     private val registry = SimpleMeterRegistry()
     private val service = DeviceHealthService(
         repo = repo,
@@ -49,18 +48,18 @@ class DeviceHealthServiceTest {
     fun `issues and transitions are timestamped when received, not when processed`() {
         service.onHeartbeat(brokenSdHeartbeat) // findForUpdate returns null (mock default): first heartbeat
 
-        val issueAt = ArgumentCaptor.forClass(Instant::class.java)
-        verify(repo).openIssue(anyString(), any(DetectedIssue::class.java), issueAt.capture())
-        assertEquals(receivedAt, issueAt.value)
+        val issueAt = argumentCaptor<Instant>()
+        verify(repo).openIssue(any(), any<DetectedIssue>(), issueAt.capture())
+        assertEquals(receivedAt, issueAt.firstValue)
 
-        val transitionAt = ArgumentCaptor.forClass(Instant::class.java)
-        verify(repo).recordTransition(anyString(), any(StateTransition::class.java), transitionAt.capture())
-        assertEquals(receivedAt, transitionAt.value)
+        val transitionAt = argumentCaptor<Instant>()
+        verify(repo).recordTransition(any(), any<StateTransition>(), transitionAt.capture())
+        assertEquals(receivedAt, transitionAt.firstValue)
 
         // The row's updated_at still says when we processed it.
-        val updatedAt = ArgumentCaptor.forClass(Instant::class.java)
-        verify(repo).upsert(any(DeviceSnapshot::class.java), updatedAt.capture())
-        assertEquals(processedAt, updatedAt.value)
+        val updatedAt = argumentCaptor<Instant>()
+        verify(repo).upsert(any<DeviceSnapshot>(), updatedAt.capture())
+        assertEquals(processedAt, updatedAt.firstValue)
     }
 
     @Test

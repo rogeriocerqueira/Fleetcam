@@ -20,6 +20,7 @@ dependencies {
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.springframework.kafka:spring-kafka-test")
     testImplementation("org.testcontainers:junit-jupiter")
