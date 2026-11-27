@@ -2,6 +2,7 @@ package dev.fleetcam.health.domain
 
 import dev.fleetcam.contracts.events.HeartbeatReceived
 import dev.fleetcam.contracts.events.SdCardSnapshot
+import dev.fleetcam.health.presentation.toSupportText
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
@@ -11,7 +12,7 @@ import kotlin.test.assertTrue
 
 class DeviceHealthEvaluatorTest {
 
-    private val evaluator = DeviceHealthEvaluator(HealthThresholds())
+    private val evaluator = DeviceHealthEvaluator(HealthThresholds.DEFAULTS)
     private val t0 = Instant.parse("2026-11-20T12:00:00Z")
     private val healthySd = SdCardSnapshot(totalBytes = 64_000_000_000, freeBytes = 20_000_000_000, writeErrorsSinceBoot = 0, readOnly = false)
 
@@ -81,7 +82,23 @@ class DeviceHealthEvaluatorTest {
 
         val issue = eval.opened.single()
         assertEquals(IssueType.CLOCK_SKEW, issue.type)
-        assertTrue("atrasado ~180 min" in issue.detail, issue.detail)
+        val text = issue.detail.toSupportText()
+        assertTrue("atrasado ~180 min" in text, text)
+        // A warning the backend already compensates for must not bury real failures in the DEGRADED list.
+        assertEquals(DeviceState.ACTIVE, eval.snapshot.state)
+    }
+
+    @Test
+    fun `warnings stay visible but only critical issues degrade the device`() {
+        val warnings = healthySd.copy(writeErrorsSinceBoot = 15, freeBytes = 1_000_000_000) // write errors + low space
+        val eval = evaluator.onHeartbeat(null, hb(t0, sd = warnings))
+
+        assertEquals(setOf(IssueType.SD_CARD_WRITE_ERRORS, IssueType.SD_CARD_LOW_SPACE), eval.snapshot.openIssues)
+        assertEquals(DeviceState.ACTIVE, eval.snapshot.state)
+
+        val critical = evaluator.onHeartbeat(eval.snapshot, hb(t0.plusSeconds(60), uptime = 3660, sd = warnings.copy(readOnly = true)))
+        assertEquals(DeviceState.DEGRADED, critical.snapshot.state)
+        assertEquals(StateTransition(DeviceState.ACTIVE, DeviceState.DEGRADED, "abertos=[SD_CARD_READ_ONLY]"), critical.transition)
     }
 
     @Test
