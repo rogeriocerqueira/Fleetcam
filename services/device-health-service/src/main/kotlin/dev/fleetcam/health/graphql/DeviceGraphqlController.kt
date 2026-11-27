@@ -65,7 +65,7 @@ class DeviceGraphqlController(private val repo: DeviceRepository) {
             .map { StateTransitionView(it.from, it.to, it.reason, it.at.toString()) }
 
     private fun DeviceSnapshot.toView() = DeviceView(
-        id = deviceId,
+        id = deviceId.value,
         firmwareVersion = firmwareVersion,
         state = state,
         lastSeenAt = lastSeenAt.toString(),

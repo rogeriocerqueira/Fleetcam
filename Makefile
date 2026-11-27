@@ -1,6 +1,9 @@
 FAULTS ?= sd_card_degrading:2,flaky_connectivity:4,firmware_clock_skew:8,reboot_loop:1,goes_dark:1,bad_gps:1
 
-.PHONY: help infra down build test run-ingestion run-health run-safety simulate up-all smoke demo replay-dlt investigate
+VUS ?= 50
+DURATION ?= 60s
+
+.PHONY: help infra down build test run-ingestion run-health run-safety simulate up-all smoke demo replay-dlt investigate load-test
 
 help: ## Lista os comandos
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -43,3 +46,8 @@ replay-dlt: ## Mostra a DLT (dry run). Para republicar: ./scripts/replay-dlt.sh 
 
 investigate: ## Gera o dataset sintético e roda as queries do postmortem 001
 	pip install -q -r analytics/requirements.txt && python analytics/investigate.py
+
+load-test: ## Teste de carga no gateway com k6. Ex.: make load-test VUS=200 DURATION=2m
+	@command -v k6 >/dev/null || { echo "k6 não encontrado: https://grafana.com/docs/k6/latest/set-up/install-k6/"; exit 1; }
+	mkdir -p build/load
+	VUS=$(VUS) DURATION=$(DURATION) k6 run --summary-export build/load/summary.json scripts/load/gateway.js

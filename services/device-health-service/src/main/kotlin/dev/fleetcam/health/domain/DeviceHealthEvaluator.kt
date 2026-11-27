@@ -4,7 +4,6 @@ import dev.fleetcam.contracts.events.HeartbeatReceived
 import dev.fleetcam.contracts.time.ClockMath
 import java.time.Duration
 import java.time.Instant
-import java.util.Locale
 
 /**
  * Pure health rules: no I/O, no Spring, no clock. Everything needed is passed in,
@@ -47,9 +46,8 @@ class DeviceHealthEvaluator(private val t: HealthThresholds) {
         val resolved = previousOpen - openIssues
 
         val next = DeviceSnapshot(
-            deviceId = hb.deviceId,
+            deviceId = DeviceId(hb.deviceId),
             firmwareVersion = hb.firmwareVersion,
-            state = if (openIssues.isEmpty()) DeviceState.ACTIVE else DeviceState.DEGRADED,
             lastSeenAt = maxOf(current?.lastSeenAt ?: hb.receivedAt, hb.receivedAt),
             lastDeviceTime = hb.deviceTime,
             lastUptimeSeconds = hb.uptimeSeconds,
@@ -78,12 +76,8 @@ class DeviceHealthEvaluator(private val t: HealthThresholds) {
         val silence = Duration.between(current.lastSeenAt, now)
         if (silence <= t.offlineAfter) return null
 
-        val issue = DetectedIssue(
-            IssueType.OFFLINE,
-            "Sem heartbeat há ${silence.toMinutes()} min (último contato ${current.lastSeenAt}). " +
-                "Verificar ignição/alimentação do veículo e cobertura de sinal na região.",
-        )
-        val next = current.copy(state = DeviceState.OFFLINE, openIssues = current.openIssues + IssueType.OFFLINE)
+        val issue = DetectedIssue(IssueType.OFFLINE, IssueDetail.Offline(silence, current.lastSeenAt))
+        val next = current.copy(openIssues = current.openIssues + IssueType.OFFLINE)
         return Evaluation(
             snapshot = next,
             opened = listOf(issue),
@@ -95,29 +89,26 @@ class DeviceHealthEvaluator(private val t: HealthThresholds) {
     private fun detectIssues(hb: HeartbeatReceived, reboots: Int): List<DetectedIssue> = buildList {
         val sd = hb.sdCard
         if (sd.readOnly) {
-            add(DetectedIssue(IssueType.SD_CARD_READ_ONLY, "Cartão SD em modo somente leitura: a câmera NÃO está gravando vídeo. Trocar o cartão."))
+            add(DetectedIssue(IssueType.SD_CARD_READ_ONLY, IssueDetail.SdReadOnly))
         }
         if (sd.writeErrorsSinceBoot >= t.sdWriteErrorsWarn) {
-            add(DetectedIssue(IssueType.SD_CARD_WRITE_ERRORS, "${sd.writeErrorsSinceBoot} erros de escrita no cartão SD desde o último boot. Risco de perda de vídeos."))
+            add(DetectedIssue(IssueType.SD_CARD_WRITE_ERRORS, IssueDetail.SdWriteErrors(sd.writeErrorsSinceBoot)))
         }
         if (sd.totalBytes > 0) {
             val freeRatio = sd.freeBytes.toDouble() / sd.totalBytes
             if (freeRatio < t.sdLowSpaceRatio) {
-                val pct = String.format(Locale.ROOT, "%.1f", freeRatio * 100)
-                add(DetectedIssue(IssueType.SD_CARD_LOW_SPACE, "Apenas $pct% livre no cartão SD: a gravação em loop pode não estar liberando espaço."))
+                add(DetectedIssue(IssueType.SD_CARD_LOW_SPACE, IssueDetail.SdLowSpace(freeRatio * 100)))
             }
         }
         if (reboots >= t.rebootLoopCount) {
-            add(DetectedIssue(IssueType.REBOOT_LOOP, "$reboots reinícios em até ${t.rebootLoopWindow.toMinutes()} min. Possível falha de alimentação ou firmware."))
+            add(DetectedIssue(IssueType.REBOOT_LOOP, IssueDetail.RebootLoop(reboots, t.rebootLoopWindow)))
         }
         val offset = ClockMath.estimatedClockOffset(hb)
         if (offset.abs() > t.clockSkewTolerance) {
-            val direction = if (offset.isNegative) "adiantado" else "atrasado"
             add(
                 DetectedIssue(
                     IssueType.CLOCK_SKEW,
-                    "Relógio do dispositivo $direction ~${offset.abs().toMinutes()} min (firmware ${hb.firmwareVersion}). " +
-                        "Eventos são exibidos com horário corrigido pelo servidor.",
+                    IssueDetail.ClockSkew(deviceBehind = !offset.isNegative, offset = offset.abs(), firmware = hb.firmwareVersion),
                 ),
             )
         }
