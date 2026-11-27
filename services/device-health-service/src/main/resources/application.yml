@@ -11,6 +11,10 @@ spring:
   graphql:
     graphiql:
       enabled: true
+  task:
+    scheduling:
+      pool:
+        size: 2 # a long offline sweep must not freeze the fleet gauges refresh
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:

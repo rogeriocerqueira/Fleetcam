@@ -1,10 +1,12 @@
 package dev.fleetcam.health.persistence
 
 import dev.fleetcam.health.domain.DetectedIssue
+import dev.fleetcam.health.domain.DeviceId
 import dev.fleetcam.health.domain.DeviceSnapshot
 import dev.fleetcam.health.domain.DeviceState
 import dev.fleetcam.health.domain.IssueType
 import dev.fleetcam.health.domain.StateTransition
+import dev.fleetcam.health.presentation.toSupportText
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
@@ -27,24 +29,25 @@ data class TransitionRecord(val from: DeviceState?, val to: DeviceState, val rea
 class DeviceRepository(private val jdbc: JdbcClient) {
 
     /** Row lock serializes concurrent writers for the same device (heartbeat consumer vs offline sweeper). */
-    fun findForUpdate(deviceId: String): DeviceSnapshot? =
-        jdbc.sql("select * from device where device_id = :id for update")
+    fun findForUpdate(deviceId: String): DeviceSnapshot? = loadWithIssues(deviceId, lock = true)
+
+    fun findById(deviceId: String): DeviceSnapshot? = loadWithIssues(deviceId, lock = false)
+
+    /**
+     * The device row and its open issue types in ONE round trip (it used to take two: the row, then
+     * the issues). Every heartbeat pays this read, so it is the cheapest place to save a query.
+     * The subquery only reads issues; the FOR UPDATE lock still applies to the device row alone.
+     */
+    private fun loadWithIssues(deviceId: String, lock: Boolean): DeviceSnapshot? =
+        jdbc.sql(if (lock) "$SNAPSHOT_WITH_ISSUES for update" else SNAPSHOT_WITH_ISSUES)
             .param("id", deviceId)
-            .query { rs, _ -> rs.toSnapshot(emptySet()) }
+            .query { rs, _ -> rs.toSnapshot(rs.openIssueTypes()) }
             .optional()
             .orElse(null)
-            ?.let { it.copy(openIssues = openIssues(deviceId)) }
 
-    fun findById(deviceId: String): DeviceSnapshot? =
-        jdbc.sql("select * from device where device_id = :id")
-            .param("id", deviceId)
-            .query { rs, _ -> rs.toSnapshot(emptySet()) }
-            .optional()
-            .orElse(null)
-            ?.let { it.copy(openIssues = openIssues(deviceId)) }
-
-    fun search(state: DeviceState?, issue: IssueType?, limit: Int): List<DeviceSnapshot> =
-        jdbc.sql(
+    /** Filters on the persisted state column; open issues are loaded in one extra query (no N+1). */
+    fun search(state: DeviceState?, issue: IssueType?, limit: Int): List<DeviceSnapshot> {
+        val devices = jdbc.sql(
             """
             select d.* from device d
             where (cast(:state as text) is null or d.state = :state)
@@ -60,6 +63,10 @@ class DeviceRepository(private val jdbc: JdbcClient) {
             .param("limit", limit)
             .query { rs, _ -> rs.toSnapshot(emptySet()) }
             .list()
+        val issuesByDevice = openIssueRecords(devices.map { it.deviceId.value })
+            .groupBy({ it.deviceId }, { it.type })
+        return devices.map { it.copy(openIssues = issuesByDevice[it.deviceId.value].orEmpty().toSet()) }
+    }
 
     fun upsert(s: DeviceSnapshot, now: Instant) {
         jdbc.sql(
@@ -87,7 +94,7 @@ class DeviceRepository(private val jdbc: JdbcClient) {
                 updated_at = excluded.updated_at
             """.trimIndent(),
         )
-            .param("deviceId", s.deviceId)
+            .param("deviceId", s.deviceId.value)
             .param("firmware", s.firmwareVersion)
             .param("state", s.state.name)
             .param("lastSeenAt", s.lastSeenAt.toOdt())
@@ -116,7 +123,7 @@ class DeviceRepository(private val jdbc: JdbcClient) {
             .param("deviceId", deviceId)
             .param("type", issue.type.name)
             .param("severity", issue.type.severity.name)
-            .param("detail", issue.detail)
+            .param("detail", issue.detail.toSupportText())
             .param("at", at.toOdt())
             .update()
     }
@@ -140,19 +147,23 @@ class DeviceRepository(private val jdbc: JdbcClient) {
             .update()
     }
 
-    fun findOfflineCandidates(cutoff: Instant): List<String> =
-        jdbc.sql("select device_id from device where state <> 'OFFLINE' and last_seen_at < :cutoff")
+    /** Oldest silence first, bounded: after an outage the backlog is drained over several sweeps. */
+    fun findOfflineCandidates(cutoff: Instant, limit: Int): List<String> =
+        jdbc.sql("select device_id from device where state <> 'OFFLINE' and last_seen_at < :cutoff order by last_seen_at limit :limit")
             .param("cutoff", cutoff.toOdt())
+            .param("limit", limit)
             .query(String::class.java)
             .list()
 
-    fun openIssues(deviceId: String): Set<IssueType> =
-        jdbc.sql("select type from device_health_issue where device_id = :id and resolved_at is null")
-            .param("id", deviceId)
-            .query(String::class.java)
+    /**
+     * Watermark: receive time (server clock) of the newest heartbeat already processed.
+     * Null when there are no devices yet.
+     */
+    fun latestSeenAt(): Instant? =
+        jdbc.sql("select max(last_seen_at) as latest from device")
+            .query { rs, _ -> rs.instant("latest") }
             .list()
-            .map { IssueType.valueOf(it) }
-            .toSet()
+            .firstOrNull()
 
     fun openIssueRecords(deviceIds: Collection<String>): List<IssueRecord> {
         if (deviceIds.isEmpty()) return emptyList()
@@ -189,9 +200,8 @@ class DeviceRepository(private val jdbc: JdbcClient) {
             .toMap()
 
     private fun ResultSet.toSnapshot(openIssues: Set<IssueType>) = DeviceSnapshot(
-        deviceId = getString("device_id"),
+        deviceId = DeviceId(getString("device_id")),
         firmwareVersion = getString("firmware_version"),
-        state = DeviceState.valueOf(getString("state")),
         lastSeenAt = instant("last_seen_at")!!,
         lastDeviceTime = instant("last_device_time")!!,
         lastUptimeSeconds = getLong("last_uptime_seconds"),
@@ -218,4 +228,18 @@ class DeviceRepository(private val jdbc: JdbcClient) {
     private fun ResultSet.instant(column: String): Instant? = getObject(column, OffsetDateTime::class.java)?.toInstant()
 
     private fun Instant.toOdt(): OffsetDateTime = OffsetDateTime.ofInstant(this, ZoneOffset.UTC)
+
+    /** Open issue types from the `open_issue_types` column of [SNAPSHOT_WITH_ISSUES]. */
+    private fun ResultSet.openIssueTypes(): Set<IssueType> =
+        (getArray("open_issue_types").array as Array<*>).mapTo(mutableSetOf()) { IssueType.valueOf(it as String) }
+
+    private companion object {
+        val SNAPSHOT_WITH_ISSUES = """
+            select d.*,
+                   coalesce((select array_agg(i.type) from device_health_issue i
+                             where i.device_id = d.device_id and i.resolved_at is null), '{}') as open_issue_types
+            from device d
+            where d.device_id = :id
+            """.trimIndent()
+    }
 }
