@@ -119,6 +119,23 @@ via GraphQL → eventos gravados → falhas injetadas detectadas → Prometheus 
 make investigate      # gera ~72 mil eventos sintéticos e roda as 7 queries do postmortem
 ```
 
+### Teste de carga
+
+Cada câmera virtual envia lotes de heartbeats ao gateway gRPC, com `messageId` e horários novos a cada envio. Precisa do [k6](https://grafana.com/docs/k6/latest/set-up/install-k6/) e do gateway no ar (`make run-ingestion`).
+
+```bash
+make load-test                        # 50 câmeras por 60 s
+make load-test VUS=200 DURATION=2m    # mais câmeras, por mais tempo
+```
+
+O teste falha (código de saída diferente de zero) se o p95 passar de 300 ms, o p99 de 1 s, ou se mais de 1% dos lotes for recusado. O relatório completo fica em `build/load/summary.json`.
+
+| Câmeras | Duração | Requisições/s | p95 | p99 | Lotes recusados |
+|---|---|---|---|---|---|
+| 50 | 60 s | a medir | a medir | a medir | a medir |
+
+Para o lado do health, observe durante o teste o lag do consumer group `device-health-service` na Kafka UI (http://localhost:8090). Se o lag crescer sem parar, o gargalo está no consumidor, não no gateway.
+
 ## Testes
 
 ```bash
@@ -126,7 +143,9 @@ make investigate      # gera ~72 mil eventos sintéticos e roda as 7 queries do 
 ```
 
 - **Unitários** para as regras de saúde, a aritmética de relógio, o mapeamento do protobuf e as validações. As regras são funções puras, sem Spring e sem I/O.
-- **Integração com Testcontainers** (Kafka + Postgres reais): duplicados absorvidos, inválidos na DLT e relógio corrigido antes de gravar.
+- **Integração com Testcontainers** (Kafka + Postgres reais):
+  - `SafetyEventPipelineIT`: duplicados absorvidos, inválidos na DLT e relógio corrigido antes de gravar.
+  - `DeviceHealthPipelineIT`: heartbeat com cartão SD somente leitura degrada a câmera, com a transição datada pela hora de recebimento; câmera silenciosa vira `OFFLINE` pela marca d'água; heartbeat repetido não desfaz um estado `DEGRADED` mais recente.
 - **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): build, testes, validação das regras do Prometheus com `promtool` e reprodução dos números do postmortem.
 
 ## Decisões técnicas
@@ -137,6 +156,7 @@ make investigate      # gera ~72 mil eventos sintéticos e roda as 7 queries do 
 | [0002](docs/adr/0002-grpc-for-device-ingestion.md) | gRPC + batch para ingestão (vs. REST e MQTT) |
 | [0003](docs/adr/0003-idempotency-and-dlt.md) | Idempotência por `message_id`; DLT para eventos, descarte para heartbeats |
 | [0004](docs/adr/0004-three-timestamps.md) | Três timestamps por mensagem; nunca misturar relógios |
+| [0005](docs/adr/0005-only-critical-issues-degrade.md) | Só problemas críticos degradam o estado; estado derivado dos problemas |
 
 ## Limitações conhecidas
 
